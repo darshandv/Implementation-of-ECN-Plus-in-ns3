@@ -58,12 +58,6 @@ ClientRx (Ptr<const Packet> packet, const Address &address)
   NS_LOG_INFO ("Client received a packet of " << packet->GetSize () << " bytes from " << address);
 }
 
-static void
-CwndChange (uint32_t oldCwnd, uint32_t newCwnd)
-{
-  NS_LOG_UNCOND (Simulator::Now ().GetSeconds () << "\t" << newCwnd);
-}
-
 void
 ClientMainObjectReceived (Ptr<const ThreeGppHttpClient>, Ptr<const Packet> packet)
 {
@@ -100,14 +94,22 @@ ClientEmbeddedObjectReceived (Ptr<const ThreeGppHttpClient>, Ptr<const Packet> p
     }
 }
 
+static void
+CwndChange (uint32_t oldCwnd, uint32_t newCwnd)
+{
+  NS_LOG_INFO (Simulator::Now ().GetSeconds () << "\t" << newCwnd);
+}
+
 int
 main (int argc, char *argv[])
 {
   double simTimeSec = 300;
+  bool useEcn = true;
   CommandLine cmd;
   cmd.AddValue ("SimulationTime", "Length of simulation in seconds.", simTimeSec);
+  cmd.AddValue ("useEcn", "Use ECN", useEcn);
   cmd.Parse (argc, argv);
-  Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("EcnPlus"));
+  
 
   Time::SetResolution (Time::NS);
   LogComponentEnableAll (LOG_PREFIX_TIME);
@@ -126,7 +128,7 @@ main (int argc, char *argv[])
 
   NetDeviceContainer devices;
   devices = pointToPoint.Install (nodes);
-
+                                        
   InternetStackHelper stack;
   stack.Install (nodes);
 
@@ -147,10 +149,11 @@ main (int argc, char *argv[])
   // Example of connecting to the trace sources
   httpServer->TraceConnectWithoutContext ("ConnectionEstablished",
                                           MakeCallback (&ServerConnectionEstablished));
-  // httpServer->TraceConnectWithoutContext ("MainObject", MakeCallback (&MainObjectGenerated));
-  // httpServer->TraceConnectWithoutContext ("EmbeddedObject", MakeCallback (&EmbeddedObjectGenerated));
-  // httpServer->TraceConnectWithoutContext ("Tx", MakeCallback (&ServerTx));
+  httpServer->TraceConnectWithoutContext ("MainObject", MakeCallback (&MainObjectGenerated));
+  httpServer->TraceConnectWithoutContext ("EmbeddedObject", MakeCallback (&EmbeddedObjectGenerated));
+  httpServer->TraceConnectWithoutContext ("Tx", MakeCallback (&ServerTx));
   httpServer->TraceConnectWithoutContext ("CongestionWindow", MakeCallback (&CwndChange));
+
 
   // Setup HTTP variables for the server
   PointerValue varPtr;
@@ -168,15 +171,17 @@ main (int argc, char *argv[])
   Ptr<ThreeGppHttpClient> httpClient = clientApps.Get (0)->GetObject<ThreeGppHttpClient> ();
 
   // Example of connecting to the trace sources
-  // httpClient->TraceConnectWithoutContext ("RxMainObject", MakeCallback (&ClientMainObjectReceived));
-  // httpClient->TraceConnectWithoutContext ("RxEmbeddedObject", MakeCallback (&ClientEmbeddedObjectReceived));
-  // httpClient->TraceConnectWithoutContext ("Rx", MakeCallback (&ClientRx));
+  httpClient->TraceConnectWithoutContext ("RxMainObject", MakeCallback (&ClientMainObjectReceived));
+  httpClient->TraceConnectWithoutContext ("RxEmbeddedObject", MakeCallback (&ClientEmbeddedObjectReceived));
+  httpClient->TraceConnectWithoutContext ("Rx", MakeCallback (&ClientRx));
   httpClient->TraceConnectWithoutContext ("CongestionWindow", MakeCallback (&CwndChange));
 
+  Config::SetDefault ("ns3::TcpSocketBase::EcnMode",StringValue("EcnPlus"));
+  Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (useEcn));
   // Stop browsing after 30 minutes
   clientApps.Stop (Seconds (simTimeSec));
-  pointToPoint.EnablePcapAll("scratch/3gpp");
 
+  pointToPoint.EnablePcapAll("3gpp");
   Simulator::Run ();
   Simulator::Destroy ();
   return 0;

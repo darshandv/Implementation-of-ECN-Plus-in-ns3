@@ -24,7 +24,7 @@
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("SixthScriptExample");
-
+//LogComponentEnable("Darshan",LOG_LEVEL_ALL);
 // ===========================================================================
 //
 //         node 0                 node 1
@@ -175,19 +175,19 @@ MyApp::ScheduleTx (void)
     }
 }
 
-static void
-CwndChange (Ptr<OutputStreamWrapper> stream, uint32_t oldCwnd, uint32_t newCwnd)
-{
-  NS_LOG_UNCOND (Simulator::Now ().GetSeconds () << "\t" << newCwnd);
-  *stream->GetStream () << Simulator::Now ().GetSeconds () << "\t" << oldCwnd << "\t" << newCwnd << std::endl;
-}
+// static void
+// CwndChange (Ptr<OutputStreamWrapper> stream, uint32_t oldCwnd, uint32_t newCwnd)
+// {
+//   NS_LOG_UNCOND (Simulator::Now ().GetSeconds () << "\t" << newCwnd);
+//   *stream->GetStream () << Simulator::Now ().GetSeconds () << "\t" << oldCwnd << "\t" << newCwnd << std::endl;
+// }
 
-static void
-RxDrop (Ptr<PcapFileWrapper> file, Ptr<const Packet> p)
-{
-  NS_LOG_UNCOND ("RxDrop at " << Simulator::Now ().GetSeconds ());
-  file->Write (Simulator::Now (), p);
-}
+// static void
+// RxDrop (Ptr<PcapFileWrapper> file, Ptr<const Packet> p)
+// {
+//   NS_LOG_UNCOND ("RxDrop at " << Simulator::Now ().GetSeconds ());
+//   file->Write (Simulator::Now (), p);
+// }
 
 int
 main (int argc, char *argv[])
@@ -195,10 +195,9 @@ main (int argc, char *argv[])
   CommandLine cmd;
   cmd.Parse (argc, argv);
   Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("EcnPlus"));
-  
   NodeContainer nodes;
   nodes.Create (2);
-
+  
   PointToPointHelper pointToPoint;
   pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
@@ -234,13 +233,13 @@ main (int argc, char *argv[])
 
   AsciiTraceHelper asciiTraceHelper;
   Ptr<OutputStreamWrapper> stream = asciiTraceHelper.CreateFileStream ("sixth.cwnd");
-  ns3TcpSocket->TraceConnectWithoutContext ("CongestionWindow", MakeBoundCallback (&CwndChange, stream));
+  // ns3TcpSocket->TraceConnectWithoutContext ("CongestionWindow", MakeBoundCallback (&CwndChange, stream));
 
   PcapHelper pcapHelper;
   Ptr<PcapFileWrapper> file = pcapHelper.CreateFile ("sixth.pcap", std::ios::out, PcapHelper::DLT_PPP);
-  devices.Get (1)->TraceConnectWithoutContext ("PhyRxDrop", MakeBoundCallback (&RxDrop, file));
-  pointToPoint.EnablePcapAll("scratch/6");
+  // devices.Get (1)->TraceConnectWithoutContext ("PhyRxDrop", MakeBoundCallback (&RxDrop, file));
 
+  pointToPoint.EnablePcapAll("scratch/6");  
   Simulator::Stop (Seconds (20));
   Simulator::Run ();
   Simulator::Destroy ();

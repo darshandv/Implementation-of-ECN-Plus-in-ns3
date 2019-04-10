@@ -177,7 +177,9 @@ main (int argc, char *argv[])
 {
   CommandLine cmd;
   cmd.Parse (argc, argv);
-  Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("ClassicEcn"));
+  bool useECN = true;
+  cmd.AddValue("useEcn","Use ECN",useECN);
+  Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("EcnPlus"));
   
   NodeContainer nodes;
   nodes.Create (2);
@@ -217,7 +219,7 @@ main (int argc, char *argv[])
   app->SetStopTime (Seconds (20.));
 
   devices.Get (1)->TraceConnectWithoutContext ("PhyRxDrop", MakeCallback (&RxDrop));
-  pointToPoint.EnablePcapAll("scratch/5");
+  pointToPoint.EnablePcapAll("scratch/5");  
   Simulator::Stop (Seconds (20));
   Simulator::Run ();
   Simulator::Destroy ();

@@ -996,11 +996,12 @@ TcpSocketBase::DoConnect (void)
       if (m_ecnMode == EcnMode_t::ClassicEcn || m_ecnMode == EcnMode_t::EcnPlus)
         {
           SendEmptyPacket (TcpHeader::SYN | TcpHeader::ECE | TcpHeader::CWR);
-          NS_LOG_INFO("SYN sent");
+          std::cout<<"\nSENDING SYN PACKET WITH ECN MODE "<<EcnMode_t::EcnPlus<<"\n";
         }
       else
         {
           SendEmptyPacket (TcpHeader::SYN);
+          std::cout<<"\nSENDING SYN PACKET \n";
         }
       NS_LOG_DEBUG (TcpStateName[m_state] << " -> SYN_SENT");
       m_state = SYN_SENT;
@@ -1120,8 +1121,8 @@ TcpSocketBase::ForwardUp (Ptr<Packet> packet, Ipv4Header header, uint16_t port,
     {
       return;
     }
-
-  if ((header.GetEcn () == Ipv4Header::ECN_CE && m_ecnCESeq < tcpHeader.GetSequenceNumber () ) || (header.GetEcn () == Ipv4Header::ECN_CE  && (tcpHeader.GetFlags () & TcpHeader::SYN & TcpHeader::ACK )))
+ 
+  if ((header.GetEcn () == Ipv4Header::ECN_CE && m_ecnCESeq < tcpHeader.GetSequenceNumber () ) || (header.GetEcn () == Ipv4Header::ECN_CE  && (tcpHeader.GetFlags () & (TcpHeader::SYN | TcpHeader::ACK ))==(TcpHeader::SYN | TcpHeader::ACK )))
     {
       NS_LOG_INFO ("Received CE flag is valid");
       NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_CE_RCVD");
@@ -1698,7 +1699,11 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
           NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_ECE_RCVD");
           m_tcb->m_ecnState = TcpSocketState::ECN_ECE_RCVD;
         }
+        
     }
+
+    
+
 
   // RFC 6675 Section 5: 2nd, 3rd paragraph and point (A), (B) implementation
   // are inside the function ProcessAck
@@ -2024,6 +2029,8 @@ TcpSocketBase::ProcessSynSent (Ptr<Packet> packet, const TcpHeader& tcpHeader)
 
   if (tcpflags == 0)
     { // Bare data, accept it and move to ESTABLISHED state. This is not a normal behaviour. Remove this?
+
+      std::cout<<"\nTCP flags is 0\n";
       NS_LOG_DEBUG ("SYN_SENT -> ESTABLISHED");
       m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_OPEN);
       m_state = ESTABLISHED;
@@ -2045,15 +2052,17 @@ TcpSocketBase::ProcessSynSent (Ptr<Packet> packet, const TcpHeader& tcpHeader)
       /* Check if we received an ECN SYN packet. Change the ECN state of receiver to ECN_IDLE if the traffic is ECN capable and
        * sender has sent ECN SYN packet
        */
+      std::cout<<"\nSYN packet received, Sending SYN + ACK\n";
       if ((m_ecnMode == EcnMode_t::ClassicEcn || m_ecnMode == EcnMode_t::EcnPlus)  && (tcpflags & (TcpHeader::CWR | TcpHeader::ECE)) == (TcpHeader::CWR | TcpHeader::ECE))
         {
+          std::cout<<"\nSYN ACK IS SENT\n";
           NS_LOG_INFO ("Received ECN SYN packet");
           SendEmptyPacket (TcpHeader::SYN | TcpHeader::ACK | TcpHeader::ECE);
           NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_IDLE");
           m_tcb->m_ecnState = TcpSocketState::ECN_IDLE;
         }
       else
-        {
+        { std::cout<<"\nSYN ACK IS SENT NOT ECN\n";
           m_tcb->m_ecnState = TcpSocketState::ECN_DISABLED;
           SendEmptyPacket (TcpHeader::SYN | TcpHeader::ACK);
         }
@@ -2061,6 +2070,12 @@ TcpSocketBase::ProcessSynSent (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   else if (tcpflags & (TcpHeader::SYN | TcpHeader::ACK)
            && m_tcb->m_nextTxSequence + SequenceNumber32 (1) == tcpHeader.GetAckNumber ())
     {
+      std::cout<<"\nSYN + ACK received\n";
+      
+
+      /* Check if we received an ECN SYN-ACK packet. Change the ECN state of sender to ECN_IDLE if receiver has sent an ECN SYN-ACK
+       * packet and the  traffic is ECN Capable
+       */
 
       // Handshake completed
           NS_LOG_DEBUG ("SYN_SENT -> ESTABLISHED");
@@ -2071,19 +2086,17 @@ TcpSocketBase::ProcessSynSent (Ptr<Packet> packet, const TcpHeader& tcpHeader)
           m_rxBuffer->SetNextRxSequence (tcpHeader.GetSequenceNumber () + SequenceNumber32 (1));
           m_tcb->m_highTxMark = ++m_tcb->m_nextTxSequence;
           m_txBuffer->SetHeadSequence (m_tcb->m_nextTxSequence);
-
-      /* Check if we received an ECN SYN-ACK packet. Change the ECN state of sender to ECN_IDLE if receiver has sent an ECN SYN-ACK
-       * packet and the  traffic is ECN Capable
-       */
-      if (m_ecnMode == EcnMode_t::EcnPlus)
+      if (m_ecnMode == EcnMode_t::EcnPlus && (tcpflags & (TcpHeader::ECE)))
         {
+          
           if (m_tcb->m_ecnState == TcpSocketState::ECN_CE_RCVD)
             {
+              std::cout<<"\nSYN+ACK packet receved and state is ECN_CE_RCVD\n";
               //The cWnd will be made to 1 * m_tcb->m_segmentSize when the sender receives SYN + ACK
               // with an ECN marked packet .
 
-              // m_tcb->m_cWnd = 1 * m_tcb->m_segmentSize;
-              // m_tcb->m_cWndInfl = m_tcb->m_cWnd;
+               m_tcb->m_cWnd = 1 * m_tcb->m_segmentSize;
+               m_tcb->m_cWndInfl = m_tcb->m_cWnd;
               
               NS_LOG_DEBUG ("Receiving SYN/ACK with CE mark in ECNPlus mode");
               SendEmptyPacket (TcpHeader::ACK | TcpHeader::ECE);
@@ -2111,6 +2124,7 @@ TcpSocketBase::ProcessSynSent (Ptr<Packet> packet, const TcpHeader& tcpHeader)
           
           SendEmptyPacket (TcpHeader::ACK);
         }
+        
       SendPendingData (m_connected);
       Simulator::ScheduleNow (&TcpSocketBase::ConnectionSucceeded, this);
       // Always respond to first data packet to speed up the connection.
@@ -2136,6 +2150,28 @@ TcpSocketBase::ProcessSynRcvd (Ptr<Packet> packet, const TcpHeader& tcpHeader,
 {
   NS_UNUSED (toAddress);
   NS_LOG_FUNCTION (this << tcpHeader);
+  if((tcpHeader.GetFlags() & TcpHeader::ACK) ==(TcpHeader::ACK)){
+        std::cout<<"\nACK at SYN_RCVD\n";
+      }
+      if((tcpHeader.GetFlags()& TcpHeader::SYN)==(TcpHeader::SYN)){
+        std::cout<<"\nSYN at SYN_RCVD\n";
+      }
+
+      if((tcpHeader.GetFlags() & TcpHeader::ECE) ==(TcpHeader::ECE)){
+        std::cout<<"\nECE at SYN_RCVD\n";
+      }
+
+  if ( (m_ecnMode == EcnMode_t::EcnPlus) && ((tcpHeader.GetFlags() & (TcpHeader::ACK | TcpHeader::ECE))==(TcpHeader::ACK | TcpHeader::ECE)))
+    {
+      std::cout<<"\nVictory\n";
+      NS_LOG_INFO ("Backoff mechanism by reducing CWND to 1 because we've received ECN Echo from a control packet");
+      m_tcb->m_cWnd = 1 * m_tcb->m_segmentSize;
+      m_tcb->m_cWndInfl = m_tcb->m_cWnd;
+      m_tcb->m_ecnState = TcpSocketState::ECN_IDLE;
+      m_state = ESTABLISHED ;
+    }
+
+    std::cout<<"\nThe cwnd is "<<m_tcb->m_cWnd<<"\n";
 
   // Extract the flags. PSH, URG, CWR and ECE are disregarded.
   uint8_t tcpflags = tcpHeader.GetFlags () & ~(TcpHeader::PSH | TcpHeader::URG | TcpHeader::CWR | TcpHeader::ECE);
@@ -2147,6 +2183,11 @@ TcpSocketBase::ProcessSynRcvd (Ptr<Packet> packet, const TcpHeader& tcpHeader,
       // If it is bare data, accept it and move to ESTABLISHED state. This is
       // possibly due to ACK lost in 3WHS. If in-sequence ACK is received, the
       // handshake is completed nicely.
+
+
+    
+
+
       NS_LOG_DEBUG ("SYN_RCVD -> ESTABLISHED");
       m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_OPEN);
       m_state = ESTABLISHED;
@@ -2154,6 +2195,9 @@ TcpSocketBase::ProcessSynRcvd (Ptr<Packet> packet, const TcpHeader& tcpHeader,
       m_retxEvent.Cancel ();
       m_tcb->m_highTxMark = ++m_tcb->m_nextTxSequence;
       m_txBuffer->SetHeadSequence (m_tcb->m_nextTxSequence);
+
+      
+
       if (m_endPoint)
         {
           m_endPoint->SetPeer (InetSocketAddress::ConvertFrom (fromAddress).GetIpv4 (),
@@ -2175,6 +2219,7 @@ TcpSocketBase::ProcessSynRcvd (Ptr<Packet> packet, const TcpHeader& tcpHeader,
           NotifySend (GetTxAvailable ());
         }
     }
+
   else if (tcpflags == TcpHeader::SYN)
     { // Probably the peer lost my SYN+ACK
       m_rxBuffer->SetNextRxSequence (tcpHeader.GetSequenceNumber () + SequenceNumber32 (1));
@@ -2790,6 +2835,7 @@ TcpSocketBase::CompleteFork (Ptr<Packet> p, const TcpHeader& h,
   else if (m_ecnMode == EcnMode_t::EcnPlus && (h.GetFlags () & (TcpHeader::CWR | TcpHeader::ECE)) == (TcpHeader::CWR | TcpHeader::ECE))
     {
       SendEmptyPacket ((TcpHeader::SYN | TcpHeader::ACK | TcpHeader::ECE),true);
+      std::cout<<"\nSYN + ACK sent\n";
       NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_IDLE");
       m_tcb->m_ecnState = TcpSocketState::ECN_IDLE;
     }
@@ -2939,17 +2985,10 @@ TcpSocketBase::SendDataPacket (SequenceNumber32 seq, uint32_t maxSize, bool with
       m_delAckCount = 0;
     }
   
-  if ( (m_ecnMode == EcnMode_t::EcnPlus) && (m_state == SYN_RCVD) && (m_tcb->m_ecnState == TcpSocketState::ECN_ECE_RCVD))
-    {
-      NS_LOG_INFO ("Backoff mechanism by reducing CWND to 1 because we've received ECN Echo from a control packet");
-      m_tcb->m_cWnd = 1 * m_tcb->m_segmentSize;
-      m_tcb->m_cWndInfl = m_tcb->m_cWnd;
-      m_tcb->m_ecnState = TcpSocketState::ECN_IDLE;
-      m_state = ESTABLISHED ;
-    }
+  
 
   // Sender should reduce the Congestion Window as a response to receiver's ECN Echo notification only once per window
-  else if (m_tcb->m_ecnState == TcpSocketState::ECN_ECE_RCVD && m_ecnEchoSeq.Get() > m_ecnCWRSeq.Get () && !isRetransmission)
+  if (m_tcb->m_ecnState == TcpSocketState::ECN_ECE_RCVD && m_ecnEchoSeq.Get() > m_ecnCWRSeq.Get () && !isRetransmission)
     {
       NS_LOG_INFO ("Backoff mechanism by reducing CWND  by half because we've received ECN Echo");
       m_tcb->m_cWnd = std::max (m_tcb->m_cWnd.Get () / 2, m_tcb->m_segmentSize);
